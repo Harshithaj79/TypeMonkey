@@ -1,8 +1,8 @@
 # 🐒 TypeMonkey — PDF Typing Practice App
 
 A browser-based typing speed practice app that lets you upload your own PDF documents and type directly from their content. No backend, no server, no setup — just a single HTML file that works anywhere.
+<img width="1915" height="897" alt="image" src="https://github.com/user-attachments/assets/84924c48-bfdf-4ddd-9973-7c2ac158e375" />
 <img width="1897" height="886" alt="image" src="https://github.com/user-attachments/assets/32c8d029-21e9-41cb-b951-e754381c6b9d" />
-<img width="1905" height="874" alt="image" src="https://github.com/user-attachments/assets/f9c7c0f1-4916-4216-8788-8557f725c58c" />
 <img width="1905" height="874" alt="image" src="https://github.com/user-attachments/assets/28da9dda-46b1-4d9c-a63a-a1874df8c695" />
 
 ## ✨ Features
