@@ -1,0 +1,907 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TypeMonkey — PDF Typing Practice</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Playfair+Display:wght@700;900&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<style>
+:root {
+  --bg: #0d0d0d;
+  --surface: #161616;
+  --card: #1e1e1e;
+  --border: #2a2a2a;
+  --accent: #f5c842;
+  --accent2: #ff6b35;
+  --text: #e8e8e8;
+  --muted: #555;
+  --correct: #4ade80;
+  --wrong: #ff4444;
+  --cursor: #f5c842;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Space Mono', monospace;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.4;
+}
+
+/* HEADER */
+header {
+  padding: 1.2rem 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border);
+  position: relative;
+  z-index: 10;
+  flex-wrap: wrap;
+  gap: 0.8rem;
+}
+.logo { font-family:'Playfair Display',serif; font-size:1.6rem; font-weight:900; color:var(--accent); letter-spacing:-1px; }
+.logo span { color:var(--accent2); }
+.tagline { font-size:0.65rem; color:var(--muted); letter-spacing:3px; text-transform:uppercase; }
+.header-btns { display:flex; gap:0.6rem; flex-wrap:wrap; }
+
+/* NAV TABS */
+.nav-tabs {
+  display:flex; border-bottom:1px solid var(--border);
+  position:relative; z-index:9; background:var(--surface);
+}
+.nav-tab {
+  padding:0.9rem 1.5rem; font-family:'Space Mono',monospace; font-size:0.72rem;
+  letter-spacing:2px; text-transform:uppercase; cursor:pointer; border:none;
+  background:none; color:var(--muted); border-bottom:2px solid transparent; transition:all 0.15s;
+}
+.nav-tab:hover { color:var(--text); }
+.nav-tab.active { color:var(--accent); border-bottom-color:var(--accent); }
+
+/* MAIN */
+main { max-width:920px; margin:0 auto; padding:1.5rem; position:relative; z-index:1; }
+
+/* BUTTONS */
+button {
+  background:var(--card); color:var(--text); border:1px solid var(--border);
+  padding:0.5rem 1.1rem; font-family:'Space Mono',monospace; font-size:0.72rem;
+  cursor:pointer; border-radius:3px; transition:all 0.15s; letter-spacing:1px;
+}
+button:hover { border-color:var(--accent); color:var(--accent); }
+button.primary { background:var(--accent); color:#000; border-color:var(--accent); font-weight:700; }
+button.primary:hover { background:#e0b430; color:#000; }
+button.danger { background:transparent; color:var(--wrong); border-color:var(--wrong); }
+button.danger:hover { background:rgba(255,68,68,0.1); color:var(--wrong); }
+
+/* SECTION TITLE */
+.section-title {
+  font-size:0.68rem; letter-spacing:3px; text-transform:uppercase;
+  color:var(--accent); margin-bottom:1rem; display:flex; align-items:center; gap:0.5rem;
+}
+.section-title::after { content:''; flex:1; height:1px; background:var(--border); }
+
+/* UPLOAD ZONE */
+#upload-zone {
+  border:2px dashed var(--border); border-radius:4px; padding:2.5rem 2rem;
+  text-align:center; transition:all 0.2s; cursor:pointer; background:var(--surface);
+  position:relative; overflow:hidden;
+}
+#upload-zone:hover, #upload-zone.drag-over { border-color:var(--accent); background:rgba(245,200,66,0.04); }
+.upload-icon { font-size:2.5rem; margin-bottom:0.8rem; display:block; animation:float 3s ease-in-out infinite; }
+@keyframes float { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-8px)} }
+.upload-title { font-family:'Playfair Display',serif; font-size:1.3rem; margin-bottom:0.4rem; }
+.upload-sub { font-size:0.72rem; color:var(--muted); letter-spacing:1px; }
+#file-input { display:none; }
+
+/* STATS BAR */
+#stats-bar {
+  display:none; grid-template-columns:repeat(4,1fr); gap:1px;
+  background:var(--border); border:1px solid var(--border); border-radius:4px;
+  overflow:hidden; margin:1.2rem 0;
+}
+.stat { background:var(--surface); padding:0.9rem 1rem; text-align:center; }
+.stat-val { font-size:1.6rem; font-weight:700; color:var(--accent); display:block; font-family:'Playfair Display',serif; }
+.stat-label { font-size:0.6rem; color:var(--muted); letter-spacing:2px; text-transform:uppercase; }
+
+/* PDF SECTION */
+#pdf-section { display:none; margin:1.2rem 0; }
+#pdf-controls { display:flex; align-items:center; gap:0.7rem; margin-bottom:1rem; flex-wrap:wrap; }
+#page-jump-wrap {
+  display:flex; align-items:center; gap:0.4rem; background:var(--card);
+  border:1px solid var(--border); border-radius:3px; padding:0.3rem 0.7rem;
+}
+#page-jump-wrap label { font-size:0.6rem; color:var(--muted); letter-spacing:1px; white-space:nowrap; }
+#page-jump-input {
+  width:55px; background:transparent; border:none; color:var(--accent);
+  font-family:'Space Mono',monospace; font-size:0.85rem; text-align:center; outline:none;
+}
+#page-jump-input::-webkit-inner-spin-button { -webkit-appearance:none; }
+#page-info { font-size:0.78rem; color:var(--muted); }
+#pdf-canvas { width:100%; border:1px solid var(--border); border-radius:4px; background:#fff; display:block; max-height:360px; object-fit:contain; }
+
+/* MODE TABS */
+.mode-tabs { display:flex; border:1px solid var(--border); border-radius:4px; overflow:hidden; margin-bottom:1.2rem; }
+.mode-tab { flex:1; border:none; border-radius:0; border-right:1px solid var(--border); padding:0.65rem; font-size:0.68rem; letter-spacing:1.5px; text-transform:uppercase; }
+.mode-tab:last-child { border-right:none; }
+.mode-tab.active { background:var(--accent); color:#000; border-color:var(--accent); }
+.mode-tab.active:hover { background:#e0b430; color:#000; }
+
+/* TYPING */
+#typing-section { display:none; margin:1.2rem 0; }
+#text-display {
+  background:var(--surface); border:1px solid var(--border); border-radius:4px;
+  padding:1.2rem 1.5rem; font-size:1rem; line-height:2; min-height:90px;
+  max-height:180px; overflow-y:auto; margin-bottom:1rem; word-break:break-word;
+}
+.char { color:var(--muted); position:relative; }
+.char.correct { color:var(--correct); }
+.char.wrong { color:var(--wrong); background:rgba(255,68,68,0.15); border-radius:2px; }
+.char.cursor::after {
+  content:''; position:absolute; left:0; top:0; bottom:0; width:2px;
+  background:var(--cursor); animation:blink 0.8s ease-in-out infinite;
+}
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+
+#typing-input {
+  width:100%; background:var(--card); border:2px solid var(--border); color:var(--text);
+  font-family:'Space Mono',monospace; font-size:1rem; padding:0.9rem 1.1rem;
+  border-radius:4px; outline:none; resize:none; transition:border-color 0.2s; min-height:75px;
+  user-select:none;
+}
+#typing-input:focus { border-color:var(--accent); }
+#typing-input.error { border-color:var(--wrong); }
+
+/* PASTE WARNING */
+#paste-warning {
+  display:none; position:fixed; top:80px; left:50%; transform:translateX(-50%);
+  background:var(--wrong); color:#fff; padding:0.6rem 1.4rem; border-radius:4px;
+  font-size:0.78rem; letter-spacing:1px; z-index:999; box-shadow:0 4px 20px rgba(255,68,68,0.4);
+}
+
+.controls-row { display:flex; gap:0.7rem; margin-top:0.8rem; flex-wrap:wrap; align-items:center; }
+
+/* PROGRESS */
+#progress-wrap { height:4px; background:var(--border); border-radius:2px; margin:0.8rem 0; overflow:hidden; display:none; }
+#progress-bar { height:100%; background:linear-gradient(90deg,var(--accent),var(--accent2)); border-radius:2px; transition:width 0.3s; width:0%; }
+
+/* COMPLETE */
+#complete-screen { display:none; text-align:center; padding:2.5rem 2rem; background:var(--surface); border:1px solid var(--border); border-radius:4px; }
+.complete-title { font-family:'Playfair Display',serif; font-size:2.2rem; color:var(--accent); margin-bottom:0.3rem; }
+.complete-stats { display:flex; justify-content:center; gap:2.5rem; margin:1.5rem 0; flex-wrap:wrap; }
+.cs-item { text-align:center; }
+.cs-val { font-size:1.8rem; font-family:'Playfair Display',serif; color:var(--accent2); }
+.cs-label { font-size:0.6rem; color:var(--muted); letter-spacing:2px; text-transform:uppercase; }
+
+/* MANUAL */
+#manual-section { display:none; margin:1.2rem 0; }
+#manual-text { width:100%; background:var(--card); border:1px solid var(--border); color:var(--text); font-family:'Space Mono',monospace; font-size:0.9rem; padding:1rem; border-radius:4px; outline:none; resize:vertical; min-height:120px; }
+#manual-text:focus { border-color:var(--accent); }
+
+/* DASHBOARD */
+#dashboard-view { display:none; }
+.dash-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:1px; background:var(--border); border:1px solid var(--border); border-radius:4px; overflow:hidden; margin-bottom:1.5rem; }
+.dash-card { background:var(--surface); padding:1.2rem 1.5rem; }
+.dash-card-title { font-size:0.6rem; color:var(--muted); letter-spacing:2px; text-transform:uppercase; margin-bottom:0.3rem; }
+.dash-card-val { font-size:2rem; font-family:'Playfair Display',serif; color:var(--accent); }
+.dash-card-sub { font-size:0.7rem; color:var(--muted); }
+
+.chart-wrap { background:var(--surface); border:1px solid var(--border); border-radius:4px; padding:1.2rem 1.5rem; margin-bottom:1.5rem; }
+.chart-inner { position:relative; height:140px; margin-top:0.5rem; }
+.chart-svg { width:100%; height:100%; overflow:visible; }
+
+.history-table { width:100%; border-collapse:collapse; font-size:0.75rem; }
+.history-table th { text-align:left; font-size:0.6rem; letter-spacing:2px; text-transform:uppercase; color:var(--muted); padding:0.5rem 0.8rem; border-bottom:1px solid var(--border); }
+.history-table td { padding:0.6rem 0.8rem; border-bottom:1px solid var(--border); color:var(--text); }
+.history-table tr:last-child td { border-bottom:none; }
+.history-table tr:hover td { background:rgba(255,255,255,0.02); }
+.badge { display:inline-block; padding:0.15rem 0.5rem; border-radius:2px; font-size:0.65rem; font-weight:700; }
+.badge-good { background:rgba(74,222,128,0.15); color:var(--correct); }
+.badge-mid  { background:rgba(245,200,66,0.15); color:var(--accent); }
+.badge-bad  { background:rgba(255,68,68,0.15); color:var(--wrong); }
+
+.mistakes-grid { display:grid; grid-template-columns:1fr 1fr; gap:1rem; margin-bottom:1.5rem; }
+.mistake-card { background:var(--surface); border:1px solid var(--border); border-radius:4px; padding:1.2rem; }
+.mistake-list { list-style:none; margin-top:0.8rem; }
+.mistake-list li { display:flex; align-items:center; justify-content:space-between; padding:0.45rem 0; border-bottom:1px solid var(--border); font-size:0.78rem; }
+.mistake-list li:last-child { border-bottom:none; }
+.mistake-key { display:inline-flex; align-items:center; justify-content:center; min-width:30px; height:28px; background:var(--card); border:1px solid var(--border); border-radius:3px; font-size:0.85rem; color:var(--wrong); font-weight:700; padding:0 4px; }
+.mistake-bar-wrap { flex:1; margin:0 0.8rem; height:6px; background:var(--border); border-radius:3px; overflow:hidden; }
+.mistake-bar { height:100%; background:var(--wrong); border-radius:3px; }
+.mistake-count { font-size:0.68rem; color:var(--muted); min-width:28px; text-align:right; }
+.bigram-pair { font-size:0.9rem; color:var(--accent); font-family:'Space Mono',monospace; background:var(--card); padding:0.15rem 0.5rem; border-radius:2px; border:1px solid var(--border); }
+.char.skipped { color: #3a3a5c; font-style: italic; }
+.badge-partial { background:rgba(150,150,255,0.15); color:#aab; }
+.empty-state { text-align:center; padding:2.5rem; color:var(--muted); font-size:0.8rem; }
+
+::-webkit-scrollbar { width:4px; }
+::-webkit-scrollbar-track { background:var(--bg); }
+::-webkit-scrollbar-thumb { background:var(--border); }
+
+@media(max-width:600px){
+  .dash-grid { grid-template-columns:1fr 1fr; }
+  .mistakes-grid { grid-template-columns:1fr; }
+  header { padding:1rem; }
+}
+</style>
+</head>
+<body>
+
+<div id="paste-warning">⛔ Pasting is disabled — type it yourself!</div>
+
+<header>
+  <div>
+    <div class="logo">Type<span>Monkey</span></div>
+    <div class="tagline">PDF Typing Practice</div>
+  </div>
+  <div class="header-btns">
+    <button class="danger" onclick="clearAllData()">🗑 Clear Data</button>
+    <button onclick="resetAll()">↺ Reset</button>
+    <button onclick="document.getElementById('file-input').click()" class="primary">+ Upload PDF</button>
+  </div>
+</header>
+
+<div class="nav-tabs">
+  <button class="nav-tab active" onclick="switchView('practice')" id="navt-practice">🐒 Practice</button>
+  <button class="nav-tab" onclick="switchView('dashboard')" id="navt-dashboard">📊 Dashboard</button>
+</div>
+
+<main>
+
+<!-- ═══ PRACTICE VIEW ═══ -->
+<div id="practice-view">
+  <div class="mode-tabs" id="mode-tabs">
+    <button class="mode-tab active" onclick="setMode('pdf')" id="tab-pdf">📄 PDF Mode</button>
+    <button class="mode-tab" onclick="setMode('manual')" id="tab-manual">✍️ Manual Text</button>
+  </div>
+
+  <div id="upload-zone" onclick="document.getElementById('file-input').click()">
+    <span class="upload-icon">🐒</span>
+    <div class="upload-title">Drop your PDF here</div>
+    <div class="upload-sub">or click to browse · PDF files only</div>
+  </div>
+  <input type="file" id="file-input" accept=".pdf" onchange="handleFile(event)">
+
+  <div id="manual-section">
+    <div class="section-title">Enter Text to Practice</div>
+    <textarea id="manual-text" placeholder="Type or paste any text here to use as your practice target..."></textarea>
+    <div class="controls-row">
+      <button class="primary" onclick="startManualTyping()">Start Typing ▶</button>
+    </div>
+  </div>
+
+  <div id="pdf-section">
+    <div class="section-title">PDF Preview</div>
+    <div id="pdf-controls">
+      <button onclick="prevPage()">← Prev</button>
+      <span id="page-info">Page 1 / 1</span>
+      <button onclick="nextPage()">Next →</button>
+      <div id="page-jump-wrap">
+        <label>JUMP TO</label>
+        <input type="number" id="page-jump-input" min="1" value="1"
+          onchange="jumpToPage()" onkeydown="if(event.key==='Enter')jumpToPage()">
+      </div>
+      <button class="primary" onclick="startTypingFromPage()">Type This Page ▶</button>
+      <button onclick="document.getElementById('file-input').click()" style="margin-left:auto">Change PDF</button>
+    </div>
+    <canvas id="pdf-canvas"></canvas>
+  </div>
+
+  <div id="stats-bar">
+    <div class="stat"><span class="stat-val" id="s-wpm">0</span><span class="stat-label">WPM</span></div>
+    <div class="stat"><span class="stat-val" id="s-acc">100%</span><span class="stat-label">Accuracy</span></div>
+    <div class="stat"><span class="stat-val" id="s-time">0s</span><span class="stat-label">Time</span></div>
+    <div class="stat"><span class="stat-val" id="s-chars">0</span><span class="stat-label">Chars</span></div>
+  </div>
+
+  <div id="progress-wrap"><div id="progress-bar"></div></div>
+
+  <div id="typing-section">
+    <div class="section-title">Type the Text Below</div>
+    <div id="text-display"></div>
+    <textarea
+      id="typing-input"
+      placeholder="Start typing here... (pasting is not allowed)"
+      oninput="handleTyping()"
+      onkeydown="handleKeydown(event)"
+      onpaste="blockPaste(event)"
+      ondrop="blockDrop(event)"
+      oncontextmenu="return false"
+    ></textarea>
+    <div class="controls-row">
+      <button onclick="restartTyping()">↺ Restart</button>
+      <button onclick="showBack()">← Back</button>
+      <button class="primary" onclick="finishEarly()" id="finish-btn" style="margin-left:auto">⏹ Finish &amp; Save</button>
+    </div>
+    <div style="font-size:0.62rem;color:var(--muted);margin-top:0.4rem;">⌨️ No pasting or backspace · Click "Finish &amp; Save" anytime to stop and record your progress.</div>
+  </div>
+
+  <div id="complete-screen">
+    <div class="complete-title">🎉 Done!</div>
+    <p style="color:var(--muted);font-size:0.75rem;letter-spacing:2px;margin-bottom:0.5rem;">SESSION COMPLETE</p>
+    <div class="complete-stats">
+      <div class="cs-item"><div class="cs-val" id="f-wpm">0</div><div class="cs-label">WPM</div></div>
+      <div class="cs-item"><div class="cs-val" id="f-acc">0%</div><div class="cs-label">Accuracy</div></div>
+      <div class="cs-item"><div class="cs-val" id="f-time">0s</div><div class="cs-label">Time</div></div>
+      <div class="cs-item"><div class="cs-val" id="f-errors">0</div><div class="cs-label">Errors</div></div>
+    </div>
+    <div style="display:flex;gap:0.8rem;justify-content:center;flex-wrap:wrap;">
+      <button class="primary" onclick="restartTyping()">Try Again</button>
+      <button onclick="showBack()">← Back</button>
+      <button onclick="switchView('dashboard')">📊 View Dashboard</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ DASHBOARD VIEW ═══ -->
+<div id="dashboard-view">
+
+  <div class="section-title" style="margin-top:0.3rem">Overall Progress</div>
+  <div class="dash-grid">
+    <div class="dash-card"><div class="dash-card-title">Total Sessions</div><div class="dash-card-val" id="d-sessions">0</div></div>
+    <div class="dash-card"><div class="dash-card-title">Best WPM</div><div class="dash-card-val" id="d-best-wpm">—</div></div>
+    <div class="dash-card"><div class="dash-card-title">Avg WPM</div><div class="dash-card-val" id="d-avg-wpm">—</div></div>
+    <div class="dash-card"><div class="dash-card-title">Avg Accuracy</div><div class="dash-card-val" id="d-avg-acc">—</div></div>
+    <div class="dash-card"><div class="dash-card-title">Total Practice Time</div><div class="dash-card-val" id="d-total-time">0m</div></div>
+    <div class="dash-card"><div class="dash-card-title">Total Chars Typed</div><div class="dash-card-val" id="d-total-chars">0</div></div>
+  </div>
+
+  <div class="chart-wrap">
+    <div class="section-title">WPM Trend Over Sessions</div>
+    <div class="chart-inner">
+      <svg class="chart-svg" id="wpm-chart" viewBox="0 0 800 130" preserveAspectRatio="none"></svg>
+    </div>
+  </div>
+
+  <div class="section-title">Mistake Analysis</div>
+  <div class="mistakes-grid">
+    <div class="mistake-card">
+      <div class="dash-card-title">Most Mistyped Keys</div>
+      <ul class="mistake-list" id="mistake-keys-list">
+        <li style="color:var(--muted);font-size:0.75rem;">Complete a session to see data</li>
+      </ul>
+    </div>
+    <div class="mistake-card">
+      <div class="dash-card-title">Hardest Character Pairs</div>
+      <ul class="mistake-list" id="mistake-bigrams-list">
+        <li style="color:var(--muted);font-size:0.75rem;">Complete a session to see data</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="section-title">Session History</div>
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:4px;overflow:auto;">
+    <table class="history-table">
+      <thead>
+        <tr>
+          <th>#</th><th>Date / Time</th><th>WPM</th>
+          <th>Accuracy</th><th>Duration</th><th>Chars</th><th>Errors</th>
+        </tr>
+      </thead>
+      <tbody id="history-tbody">
+        <tr><td colspan="7" class="empty-state">No sessions yet — start practicing!</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+</div>
+</main>
+
+<script>
+// ─── PDF.js ───────────────────────────────────────────────
+// Fix "fake worker" warning: fetch the worker script and turn it into a Blob URL.
+// This works whether the file is served via HTTP or opened directly (file://).
+(async () => {
+  try {
+    const resp = await fetch('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js');
+    const text = await resp.text();
+    const blob = new Blob([text], { type: 'application/javascript' });
+    pdfjsLib.GlobalWorkerOptions.workerSrc = URL.createObjectURL(blob);
+  } catch(e) {
+    // Network unavailable — fall back gracefully (fake worker will still work, just slower)
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  }
+})();
+
+// ─── STATE ────────────────────────────────────────────────
+let pdfDoc=null, currentPage=1, totalPages=0;
+let targetText='', typedChars=[];
+let startTime=null, timerInterval=null, sessionFinished=false;
+let currentMode='pdf', currentView='practice';
+let sessionErrors={}, sessionBigrams={};
+
+// ─── STORAGE ──────────────────────────────────────────────
+function loadData(){
+  try{ return JSON.parse(localStorage.getItem('tm_v2')||'{"sessions":[],"mistakes":{},"bigrams":{}}'); }
+  catch(e){ return {sessions:[],mistakes:{},bigrams:{}}; }
+}
+function saveData(d){ localStorage.setItem('tm_v2',JSON.stringify(d)); }
+function clearAllData(){
+  if(confirm('Delete ALL saved progress, history and mistake data?')){
+    localStorage.removeItem('tm_v2');
+    renderDashboard();
+    alert('All data cleared.');
+  }
+}
+
+// ─── VIEW SWITCH ──────────────────────────────────────────
+function switchView(v){
+  currentView=v;
+  document.getElementById('navt-practice').classList.toggle('active',v==='practice');
+  document.getElementById('navt-dashboard').classList.toggle('active',v==='dashboard');
+  document.getElementById('practice-view').style.display=v==='practice'?'block':'none';
+  document.getElementById('dashboard-view').style.display=v==='dashboard'?'block':'none';
+  if(v==='dashboard') renderDashboard();
+}
+
+// ─── DRAG & DROP ──────────────────────────────────────────
+const uz=document.getElementById('upload-zone');
+uz.addEventListener('dragover',e=>{e.preventDefault();uz.classList.add('drag-over');});
+uz.addEventListener('dragleave',()=>uz.classList.remove('drag-over'));
+uz.addEventListener('drop',e=>{
+  e.preventDefault(); uz.classList.remove('drag-over');
+  const f=e.dataTransfer.files[0];
+  if(f&&f.type==='application/pdf') loadPDF(f);
+});
+
+// ─── MODE ─────────────────────────────────────────────────
+function setMode(m){
+  currentMode=m;
+  document.getElementById('tab-pdf').classList.toggle('active',m==='pdf');
+  document.getElementById('tab-manual').classList.toggle('active',m==='manual');
+  document.getElementById('upload-zone').style.display=m==='pdf'?'block':'none';
+  document.getElementById('manual-section').style.display=m==='manual'?'block':'none';
+  ['pdf-section','typing-section','complete-screen','stats-bar','progress-wrap'].forEach(id=>
+    document.getElementById(id).style.display='none');
+}
+
+// ─── PDF ──────────────────────────────────────────────────
+function handleFile(e){ const f=e.target.files[0]; if(f) loadPDF(f); }
+
+async function loadPDF(file){
+  const ab=await file.arrayBuffer();
+  pdfDoc=await pdfjsLib.getDocument({data:ab}).promise;
+  totalPages=pdfDoc.numPages;
+  currentPage=1;
+  const ji=document.getElementById('page-jump-input');
+  ji.max=totalPages; ji.value=1;
+  document.getElementById('upload-zone').style.display='none';
+  document.getElementById('pdf-section').style.display='block';
+  renderPage(1);
+}
+
+async function renderPage(num){
+  const page=await pdfDoc.getPage(num);
+  const vp=page.getViewport({scale:1.4});
+  const cv=document.getElementById('pdf-canvas');
+  cv.height=vp.height; cv.width=vp.width;
+  await page.render({canvasContext:cv.getContext('2d'),viewport:vp}).promise;
+  document.getElementById('page-info').textContent=`Page ${num} / ${totalPages}`;
+  document.getElementById('page-jump-input').value=num;
+}
+
+function prevPage(){ if(currentPage>1){currentPage--;renderPage(currentPage);} }
+function nextPage(){ if(currentPage<totalPages){currentPage++;renderPage(currentPage);} }
+
+function jumpToPage(){
+  const inp=document.getElementById('page-jump-input');
+  let pg=parseInt(inp.value);
+  if(isNaN(pg)) return;
+  pg=Math.max(1,Math.min(totalPages,pg));
+  inp.value=pg; currentPage=pg;
+  renderPage(currentPage);
+}
+
+async function startTypingFromPage(){
+  const page=await pdfDoc.getPage(currentPage);
+  const content=await page.getTextContent();
+  const text=content.items.map(i=>i.str).join(' ').replace(/\s+/g,' ').trim();
+  if(!text){ alert('No readable text found on this page. Try another page.'); return; }
+  startTypingSession(text);
+}
+
+function startManualTyping(){
+  const text=document.getElementById('manual-text').value.trim();
+  if(!text){ alert('Please enter some text first.'); return; }
+  startTypingSession(text);
+}
+
+// ─── START SESSION ────────────────────────────────────────
+function startTypingSession(text){
+  targetText=text; typedChars=[];
+  sessionErrors={}; sessionBigrams={};
+  cursorPos=0; charResults=[];
+  startTime=null; sessionFinished=false;
+  clearInterval(timerInterval); timerInterval=null;
+
+  ['pdf-section','manual-section','upload-zone','complete-screen'].forEach(id=>
+    document.getElementById(id).style.display='none');
+  document.getElementById('typing-section').style.display='block';
+  document.getElementById('stats-bar').style.display='grid';
+  document.getElementById('progress-wrap').style.display='block';
+
+  const inp=document.getElementById('typing-input');
+  inp.value=''; inp.disabled=false; inp.classList.remove('error');
+  inp.focus();
+  renderTextDisplay();
+  updateLiveStats(0,0);
+}
+
+// ─── PASTE / DROP BLOCK ───────────────────────────────────
+function blockPaste(e){ e.preventDefault(); showPasteWarn(); }
+function blockDrop(e){ e.preventDefault(); showPasteWarn(); }
+
+// ─── KEYDOWN ──────────────────────────────────────────────
+function handleKeydown(e){
+  // Block backspace/delete — no corrections allowed
+  if(e.key==='Backspace' || e.key==='Delete'){
+    e.preventDefault();
+    showToast('⛔ No backspace! Keep going forward.', '#ff6b35');
+    return;
+  }
+  if(e.key==='Tab') e.preventDefault();
+  if((e.ctrlKey||e.metaKey)&&(e.key==='v'||e.key==='V')){
+    e.preventDefault(); showPasteWarn();
+  }
+  // Block Ctrl+Z undo (another way to "backspace")
+  if((e.ctrlKey||e.metaKey)&&(e.key==='z'||e.key==='Z')){
+    e.preventDefault();
+  }
+}
+
+// ─── TYPEABLE CHECK ───────────────────────────────────────
+// Returns true if the character requires an actual keypress to type
+function isTypeable(ch){
+  // Standard printable ASCII (space to ~) = typeable
+  // Everything else (em-dash, curly quotes, accented chars, etc.) = auto-skip
+  const code = ch.codePointAt(0);
+  return code >= 32 && code <= 126;
+}
+
+// ─── TYPING HANDLER ───────────────────────────────────────
+// We maintain a virtual cursor `cursorPos` that tracks position in targetText.
+// The textarea only ever receives typeable characters. We compare each
+// keystroke against the next typeable char in targetText (skipping non-typeable
+// ones automatically). This way exotic chars never block progress.
+let cursorPos = 0;       // current position in targetText
+let charResults = [];    // per-position: true=correct, false=wrong, null=auto-skipped
+
+function handleTyping(){
+  if(sessionFinished) return;
+
+  const inp = document.getElementById('typing-input');
+  const typed = inp.value;
+  const newLen = typed.length;
+  const oldLen = typedChars.length;
+
+  // Paste protection: value grew by more than 1 char
+  if(newLen - oldLen > 2){
+    inp.value = typedChars.join('');
+    showPasteWarn();
+    return;
+  }
+
+  // Only handle additions (deletions are blocked by keydown, but guard anyway)
+  if(newLen <= oldLen) return;
+
+  // The new character just typed
+  const newChar = typed[newLen - 1];
+  typedChars.push(newChar);
+
+  // Start timer on first keystroke
+  if(!startTime){
+    startTime = Date.now();
+    timerInterval = setInterval(tickTimer, 400);
+  }
+
+  // Advance cursorPos past auto-skipped chars first
+  function advancePastSkipped(){
+    while(cursorPos < targetText.length && !isTypeable(targetText[cursorPos])){
+      charResults[cursorPos] = null; // auto-skipped
+      cursorPos++;
+    }
+  }
+
+  advancePastSkipped();
+
+  if(cursorPos < targetText.length){
+    const expected = targetText[cursorPos];
+    const correct = newChar === expected;
+    charResults[cursorPos] = correct;
+
+    if(!correct){
+      // Record mistake
+      const label = expected === ' ' ? 'Space' : expected;
+      sessionErrors[label] = (sessionErrors[label]||0) + 1;
+      if(cursorPos > 0){
+        const prev = targetText[cursorPos-1];
+        const bg = (prev + expected).replace(/ /g,'⎵');
+        sessionBigrams[bg] = (sessionBigrams[bg]||0) + 1;
+      }
+    }
+    cursorPos++;
+  }
+
+  // After advancing, skip any non-typeable chars at the new position
+  advancePastSkipped();
+
+  // Count errors and typed positions
+  const typed_count = charResults.filter(r => r !== null).length; // typeable positions handled
+  const error_count = charResults.filter(r => r === false).length;
+
+  // Update input border colour
+  const lastResult = charResults[cursorPos - 1];
+  inp.classList.toggle('error', lastResult === false);
+
+  renderTextDisplay();
+  updateLiveStats(typed_count, error_count);
+
+  // Complete when cursor has reached end of target (all chars handled)
+  if(cursorPos >= targetText.length){
+    finishSession();
+  }
+}
+
+function tickTimer(){
+  if(sessionFinished){ clearInterval(timerInterval); timerInterval=null; return; }
+  const typedCount = charResults.filter(r=>r!==null).length;
+  const errCount = charResults.filter(r=>r===false).length;
+  updateLiveStats(typedCount, errCount);
+}
+
+// ─── RENDER TEXT DISPLAY ──────────────────────────────────
+function renderTextDisplay(){
+  const d = document.getElementById('text-display');
+  let html = '';
+  for(let i = 0; i < targetText.length; i++){
+    const raw = targetText[i];
+    const ch = raw === '\n' ? '↵\n' : raw;
+    const result = charResults[i]; // true=correct, false=wrong, null=skipped, undefined=not yet
+
+    if(result === true){
+      html += `<span class="char correct">${esc(ch)}</span>`;
+    } else if(result === false){
+      html += `<span class="char wrong">${esc(ch)}</span>`;
+    } else if(result === null){
+      // auto-skipped (non-typeable) — show dimmed
+      html += `<span class="char skipped">${esc(ch)}</span>`;
+    } else if(i === cursorPos){
+      html += `<span class="char cursor">${esc(ch)}</span>`;
+    } else {
+      html += `<span class="char">${esc(ch)}</span>`;
+    }
+  }
+  d.innerHTML = html;
+  const cur = d.querySelector('.cursor');
+  if(cur) cur.scrollIntoView({block:'nearest', behavior:'smooth'});
+  const pct = Math.min(100, (cursorPos / targetText.length) * 100);
+  document.getElementById('progress-bar').style.width = pct + '%';
+}
+
+function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/ /g,'&nbsp;'); }
+
+// ─── LIVE STATS ───────────────────────────────────────────
+function updateLiveStats(typed,errors){
+  const elapsed=startTime?(Date.now()-startTime)/1000:0;
+  const wpm=elapsed>0?Math.round((typed/5)/(elapsed/60)):0;
+  const acc=typed>0?Math.round(((typed-errors)/typed)*100):100;
+  document.getElementById('s-wpm').textContent=wpm;
+  document.getElementById('s-acc').textContent=acc+'%';
+  document.getElementById('s-time').textContent=Math.round(elapsed)+'s';
+  document.getElementById('s-chars').textContent=typed;
+}
+
+// ─── FINISH SESSION ───────────────────────────────────────
+function finishSession(early=false){
+  if(sessionFinished) return;
+  sessionFinished=true;
+  clearInterval(timerInterval); timerInterval=null;
+
+  const elapsed = startTime ? (Date.now()-startTime)/1000 : 0;
+  const typedCount = charResults.filter(r=>r!==null).length;
+  const errorCount = charResults.filter(r=>r===false).length;
+  const wpm = elapsed>0 ? Math.round((typedCount/5)/(elapsed/60)) : 0;
+  const acc = typedCount>0 ? Math.round(((typedCount-errorCount)/typedCount)*100) : 100;
+
+  document.getElementById('f-wpm').textContent = wpm;
+  document.getElementById('f-acc').textContent = acc+'%';
+  document.getElementById('f-time').textContent = Math.round(elapsed)+'s';
+  document.getElementById('f-errors').textContent = errorCount;
+  document.getElementById('typing-section').style.display = 'none';
+  document.getElementById('complete-screen').style.display = 'block';
+  document.getElementById('progress-bar').style.width = early ? Math.min(100,(cursorPos/targetText.length)*100)+'%' : '100%';
+
+  // Update complete screen title
+  document.querySelector('.complete-title').textContent = early ? '⏹ Saved!' : '🎉 Done!';
+  document.querySelector('#complete-screen p').textContent = early ? 'SESSION SAVED (PARTIAL)' : 'SESSION COMPLETE';
+
+  // Persist to localStorage
+  const data = loadData();
+  data.sessions.push({
+    date: new Date().toISOString(),
+    wpm, acc,
+    elapsed: Math.round(elapsed),
+    chars: typedCount,
+    errors: errorCount,
+    partial: early
+  });
+  Object.entries(sessionErrors).forEach(([k,v])=>{ data.mistakes[k]=(data.mistakes[k]||0)+v; });
+  Object.entries(sessionBigrams).forEach(([k,v])=>{ data.bigrams[k]=(data.bigrams[k]||0)+v; });
+  saveData(data);
+}
+
+function finishEarly(){
+  if(sessionFinished) return;
+  if(!startTime){ showToast('Start typing first!','#ff6b35'); return; }
+  finishSession(true);
+}
+
+// ─── TOAST ────────────────────────────────────────────────
+let toastTimer=null;
+function showToast(msg, color='#ff4444'){
+  const w=document.getElementById('paste-warning');
+  w.textContent=msg;
+  w.style.background=color;
+  w.style.display='block';
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>{ w.style.display='none'; },2200);
+}
+function showPasteWarn(){ showToast('⛔ Pasting is disabled — type it yourself!','#ff4444'); }
+
+// ─── CONTROLS ─────────────────────────────────────────────
+function restartTyping(){ document.getElementById('complete-screen').style.display='none'; startTypingSession(targetText); }
+
+function showBack(){
+  sessionFinished=true;
+  clearInterval(timerInterval); timerInterval=null;
+  ['typing-section','complete-screen','stats-bar','progress-wrap'].forEach(id=>
+    document.getElementById(id).style.display='none');
+  if(currentMode==='pdf'&&pdfDoc) document.getElementById('pdf-section').style.display='block';
+  else document.getElementById('manual-section').style.display='block';
+}
+
+function resetAll(){
+  sessionFinished=true;
+  clearInterval(timerInterval); timerInterval=null;
+  pdfDoc=null; currentPage=1; targetText=''; typedChars=[];
+  document.getElementById('file-input').value='';
+  document.getElementById('manual-text').value='';
+  ['pdf-section','typing-section','complete-screen','stats-bar','progress-wrap','manual-section'].forEach(id=>
+    document.getElementById(id).style.display='none');
+  document.getElementById('progress-bar').style.width='0%';
+  setMode(currentMode);
+}
+
+// ─── DASHBOARD ────────────────────────────────────────────
+function renderDashboard(){
+  const data=loadData();
+  const s=data.sessions;
+
+  document.getElementById('d-sessions').textContent=s.length;
+  if(s.length===0){
+    ['d-best-wpm','d-avg-wpm','d-avg-acc'].forEach(id=>document.getElementById(id).textContent='—');
+    document.getElementById('d-total-time').textContent='0m';
+    document.getElementById('d-total-chars').textContent='0';
+  } else {
+    const wpms=s.map(x=>x.wpm), accs=s.map(x=>x.acc);
+    document.getElementById('d-best-wpm').textContent=Math.max(...wpms);
+    document.getElementById('d-avg-wpm').textContent=Math.round(wpms.reduce((a,b)=>a+b,0)/wpms.length);
+    document.getElementById('d-avg-acc').textContent=Math.round(accs.reduce((a,b)=>a+b,0)/accs.length)+'%';
+    const tot=s.reduce((a,x)=>a+x.elapsed,0);
+    document.getElementById('d-total-time').textContent=tot<60?tot+'s':Math.round(tot/60)+'m';
+    document.getElementById('d-total-chars').textContent=s.reduce((a,x)=>a+x.chars,0).toLocaleString();
+  }
+
+  renderWpmChart(s);
+  renderMistakes(data.mistakes,data.bigrams);
+  renderHistory(s);
+}
+
+function renderWpmChart(sessions){
+  const svg=document.getElementById('wpm-chart');
+  if(sessions.length<2){
+    svg.innerHTML=`<text x="400" y="65" text-anchor="middle" fill="#555" font-family="Space Mono,monospace" font-size="13">Need at least 2 sessions to show the trend chart</text>`;
+    return;
+  }
+  const W=800,H=130,pad=25;
+  const wpms=sessions.map(s=>s.wpm);
+  const maxW=Math.max(...wpms,1), minW=Math.min(...wpms);
+  const xStep=(W-pad*2)/(wpms.length-1);
+  const pts=wpms.map((w,i)=>{
+    const x=pad+i*xStep;
+    const y=pad+(1-(w-minW)/(maxW-minW||1))*(H-pad*2);
+    return [x,y];
+  });
+  const areaPath=`M${pts[0].join(',')} `+pts.slice(1).map(p=>`L${p.join(',')}`).join(' ')+
+    ` L${pts[pts.length-1][0]},${H-pad} L${pad},${H-pad} Z`;
+  const linePath=`M${pts[0].join(',')} `+pts.slice(1).map(p=>`L${p.join(',')}`).join(' ');
+  svg.innerHTML=`
+    <defs><linearGradient id="cg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#f5c842" stop-opacity="0.25"/>
+      <stop offset="100%" stop-color="#f5c842" stop-opacity="0"/>
+    </linearGradient></defs>
+    <path d="${areaPath}" fill="url(#cg)"/>
+    <path d="${linePath}" fill="none" stroke="#f5c842" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+    ${pts.map(([x,y],i)=>`
+      <circle cx="${x}" cy="${y}" r="4.5" fill="#f5c842" stroke="#0d0d0d" stroke-width="1.5"/>
+      <text x="${x}" y="${y-9}" text-anchor="middle" fill="#f5c842" font-family="Space Mono,monospace" font-size="10">${wpms[i]}</text>
+    `).join('')}
+    <text x="${pad}" y="${H-4}" fill="#555" font-family="Space Mono,monospace" font-size="9">S1</text>
+    <text x="${W-pad}" y="${H-4}" text-anchor="end" fill="#555" font-family="Space Mono,monospace" font-size="9">S${wpms.length}</text>
+  `;
+}
+
+function renderMistakes(mistakes,bigrams){
+  const kl=document.getElementById('mistake-keys-list');
+  const bl=document.getElementById('mistake-bigrams-list');
+
+  const mk=Object.entries(mistakes).sort((a,b)=>b[1]-a[1]).slice(0,8);
+  const bg=Object.entries(bigrams).sort((a,b)=>b[1]-a[1]).slice(0,8);
+
+  if(mk.length===0){
+    kl.innerHTML='<li style="color:var(--muted);font-size:0.75rem">No mistakes recorded yet 🎉</li>';
+  } else {
+    const max=mk[0][1];
+    kl.innerHTML=mk.map(([k,v])=>`
+      <li>
+        <span class="mistake-key">${k==='Space'?'⎵':esc(k)}</span>
+        <div class="mistake-bar-wrap"><div class="mistake-bar" style="width:${Math.round(v/max*100)}%"></div></div>
+        <span class="mistake-count">${v}×</span>
+      </li>`).join('');
+  }
+
+  if(bg.length===0){
+    bl.innerHTML='<li style="color:var(--muted);font-size:0.75rem">No data yet</li>';
+  } else {
+    const max=bg[0][1];
+    bl.innerHTML=bg.map(([k,v])=>`
+      <li>
+        <span class="bigram-pair">${esc(k)}</span>
+        <div class="mistake-bar-wrap"><div class="mistake-bar" style="width:${Math.round(v/max*100)}%"></div></div>
+        <span class="mistake-count">${v}×</span>
+      </li>`).join('');
+  }
+}
+
+function renderHistory(sessions){
+  const tb=document.getElementById('history-tbody');
+  if(sessions.length===0){
+    tb.innerHTML='<tr><td colspan="7" class="empty-state">No sessions recorded yet. Start practicing!</td></tr>';
+    return;
+  }
+  tb.innerHTML=[...sessions].reverse().map((s,ri)=>{
+    const i=sessions.length-ri;
+    const dt=new Date(s.date);
+    const ds=dt.toLocaleDateString()+' '+dt.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+    const ac=s.acc>=95?'badge-good':s.acc>=80?'badge-mid':'badge-bad';
+    const wc=s.wpm>=50?'badge-good':s.wpm>=30?'badge-mid':'badge-bad';
+    const dur=s.elapsed<60?s.elapsed+'s':Math.floor(s.elapsed/60)+'m '+(s.elapsed%60)+'s';
+    const partialTag=s.partial?'<span class="badge badge-partial" style="margin-left:4px;font-size:0.55rem">partial</span>':'';
+    return `<tr>
+      <td style="color:var(--muted)">${i}</td>
+      <td style="color:var(--muted);font-size:0.68rem">${ds}${partialTag}</td>
+      <td><span class="badge ${wc}">${s.wpm}</span></td>
+      <td><span class="badge ${ac}">${s.acc}%</span></td>
+      <td>${dur}</td>
+      <td>${s.chars.toLocaleString()}</td>
+      <td style="color:${s.errors>0?'var(--wrong)':'var(--correct)'}">${s.errors}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ─── INIT ─────────────────────────────────────────────────
+setMode('pdf');
+switchView('practice');
+</script>
+</body>
+</html>
+
